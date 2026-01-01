@@ -15,16 +15,21 @@ pub async fn get_source(
     manager: &BrowserManager,
     url: &str,
     proxy: Option<ProxyConfig>,
-    _profile: Profile,
+    profile: Profile,
 ) -> ChaserResult<String> {
+    // Build the stealth profile for this request
+    let chaser_profile = BrowserManager::build_profile(profile);
+
     // Acquire context permit
     let _permit = manager.acquire_permit().await?;
 
     // Create context with proxy if provided
     let ctx_id = manager.create_context(proxy.as_ref()).await?;
 
-    // Create page in context
-    let page = manager.new_page_in_context(ctx_id, "about:blank").await?;
+    // Create page in context with the specified profile
+    let page = manager
+        .new_page_in_context(ctx_id, "about:blank", Some(&chaser_profile))
+        .await?;
 
     // Navigate and wait for load
     page.goto(url)
@@ -59,16 +64,21 @@ pub async fn solve_waf_session(
     manager: &BrowserManager,
     url: &str,
     proxy: Option<ProxyConfig>,
-    _profile: Profile,
+    profile: Profile,
 ) -> ChaserResult<WafSession> {
+    // Build the stealth profile for this request
+    let chaser_profile = BrowserManager::build_profile(profile);
+
     // Acquire context permit
     let _permit = manager.acquire_permit().await?;
 
     // Create context with proxy if provided
     let ctx_id = manager.create_context(proxy.as_ref()).await?;
 
-    // Create page in context
-    let page = manager.new_page_in_context(ctx_id, "about:blank").await?;
+    // Create page in context with the specified profile
+    let page = manager
+        .new_page_in_context(ctx_id, "about:blank", Some(&chaser_profile))
+        .await?;
 
     // First, get Accept-Language via httpbin
     let accept_language = get_accept_language(&page).await.unwrap_or_default();
@@ -139,16 +149,21 @@ pub async fn solve_turnstile_max(
     manager: &BrowserManager,
     url: &str,
     proxy: Option<ProxyConfig>,
-    _profile: Profile,
+    profile: Profile,
 ) -> ChaserResult<String> {
+    // Build the stealth profile for this request
+    let chaser_profile = BrowserManager::build_profile(profile);
+
     // Acquire context permit
     let _permit = manager.acquire_permit().await?;
 
     // Create context with proxy if provided
     let ctx_id = manager.create_context(proxy.as_ref()).await?;
 
-    // Create page in context (starts at about:blank, stealth already injected)
-    let page = manager.new_page_in_context(ctx_id, "about:blank").await?;
+    // Create page in context with the specified profile
+    let page = manager
+        .new_page_in_context(ctx_id, "about:blank", Some(&chaser_profile))
+        .await?;
 
     // Inject token extraction script before navigation
     page.evaluate_on_new_document(TURNSTILE_EXTRACTOR_SCRIPT)
@@ -175,11 +190,14 @@ pub async fn solve_turnstile_min(
     url: &str,
     site_key: &str,
     proxy: Option<ProxyConfig>,
-    _profile: Profile,
+    profile: Profile,
 ) -> ChaserResult<String> {
     use chaser_oxide::cdp::browser_protocol::fetch::EventRequestPaused;
     use chaser_oxide::cdp::browser_protocol::network::ResourceType;
     use futures::StreamExt;
+
+    // Build the stealth profile for this request
+    let chaser_profile = BrowserManager::build_profile(profile);
 
     // Acquire context permit
     let _permit = manager.acquire_permit().await?;
@@ -190,8 +208,10 @@ pub async fn solve_turnstile_min(
     // Prepare fake page HTML with site key
     let fake_html = FAKE_PAGE_HTML.replace("<site-key>", site_key);
 
-    // Create page in context
-    let page = manager.new_page_in_context(ctx_id, "about:blank").await?;
+    // Create page in context with the specified profile
+    let page = manager
+        .new_page_in_context(ctx_id, "about:blank", Some(&chaser_profile))
+        .await?;
 
     // Wrap in ChaserPage for request interception API
     let chaser = chaser_oxide::ChaserPage::new(page.clone());

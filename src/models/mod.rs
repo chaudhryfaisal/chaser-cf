@@ -18,8 +18,8 @@ pub enum Profile {
 }
 
 impl Profile {
-    /// Get profile from string (for FFI)
-    pub fn from_str(s: &str) -> Option<Self> {
+    /// Parse profile from string (for FFI)
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "windows" | "win" => Some(Profile::Windows),
             "linux" => Some(Profile::Linux),
@@ -216,9 +216,9 @@ mod tests {
 
     #[test]
     fn test_profile_from_str() {
-        assert_eq!(Profile::from_str("windows"), Some(Profile::Windows));
-        assert_eq!(Profile::from_str("LINUX"), Some(Profile::Linux));
-        assert_eq!(Profile::from_str("darwin"), Some(Profile::Macos));
-        assert_eq!(Profile::from_str("invalid"), None);
+        assert_eq!(Profile::parse("windows"), Some(Profile::Windows));
+        assert_eq!(Profile::parse("LINUX"), Some(Profile::Linux));
+        assert_eq!(Profile::parse("darwin"), Some(Profile::Macos));
+        assert_eq!(Profile::parse("invalid"), None);
     }
 }

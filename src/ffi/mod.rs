@@ -120,7 +120,12 @@ pub extern "C" fn chaser_config_default() -> ChaserConfigFFI {
 /// # Returns
 /// - 0 on success
 /// - Non-zero error code on failure
+///
+/// # Safety
+/// - `config` must be either NULL or a valid pointer to a `ChaserConfigFFI` struct
+/// - If `config.chrome_path` is not NULL, it must be a valid null-terminated C string
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn chaser_init(config: *const ChaserConfigFFI) -> i32 {
     // Initialize runtime
     let runtime = RUNTIME.get_or_try_init(|| {
@@ -181,7 +186,10 @@ pub extern "C" fn chaser_is_ready() -> i32 {
     if let (Some(runtime), Some(chaser)) = (RUNTIME.get(), CHASER.get()) {
         let ready = runtime.block_on(async {
             let guard = chaser.read().await;
-            guard.as_ref().map(|s| s.is_ready()).unwrap_or(false).await
+            match guard.as_ref() {
+                Some(s) => s.is_ready().await,
+                None => false,
+            }
         });
         if ready {
             1
@@ -200,6 +208,11 @@ pub extern "C" fn chaser_is_ready() -> i32 {
 /// - `proxy`: Optional proxy config (NULL for no proxy)
 /// - `user_data`: User context, returned in callback
 /// - `callback`: Function called with JSON result
+///
+/// # Safety
+/// - `url` must be a valid null-terminated C string
+/// - `proxy` must be either NULL or a valid pointer to a `ProxyConfigFFI` struct
+/// - `callback` must be a valid function pointer
 #[no_mangle]
 pub unsafe extern "C" fn chaser_solve_waf_async(
     url: *const c_char,
@@ -237,6 +250,11 @@ pub unsafe extern "C" fn chaser_solve_waf_async(
 /// - `proxy`: Optional proxy config (NULL for no proxy)
 /// - `user_data`: User context, returned in callback
 /// - `callback`: Function called with JSON result
+///
+/// # Safety
+/// - `url` must be a valid null-terminated C string
+/// - `proxy` must be either NULL or a valid pointer to a `ProxyConfigFFI` struct
+/// - `callback` must be a valid function pointer
 #[no_mangle]
 pub unsafe extern "C" fn chaser_get_source_async(
     url: *const c_char,
@@ -274,6 +292,11 @@ pub unsafe extern "C" fn chaser_get_source_async(
 /// - `proxy`: Optional proxy config (NULL for no proxy)
 /// - `user_data`: User context, returned in callback
 /// - `callback`: Function called with JSON result
+///
+/// # Safety
+/// - `url` must be a valid null-terminated C string
+/// - `proxy` must be either NULL or a valid pointer to a `ProxyConfigFFI` struct
+/// - `callback` must be a valid function pointer
 #[no_mangle]
 pub unsafe extern "C" fn chaser_solve_turnstile_async(
     url: *const c_char,
@@ -312,6 +335,12 @@ pub unsafe extern "C" fn chaser_solve_turnstile_async(
 /// - `proxy`: Optional proxy config (NULL for no proxy)
 /// - `user_data`: User context, returned in callback
 /// - `callback`: Function called with JSON result
+///
+/// # Safety
+/// - `url` must be a valid null-terminated C string
+/// - `site_key` must be a valid null-terminated C string
+/// - `proxy` must be either NULL or a valid pointer to a `ProxyConfigFFI` struct
+/// - `callback` must be a valid function pointer
 #[no_mangle]
 pub unsafe extern "C" fn chaser_solve_turnstile_min_async(
     url: *const c_char,
@@ -355,6 +384,10 @@ pub unsafe extern "C" fn chaser_solve_turnstile_min_async(
 /// Free a string returned by chaser-cf
 ///
 /// Must be called on any string returned via callbacks.
+///
+/// # Safety
+/// - `s` must be either NULL or a valid pointer previously returned by chaser-cf callbacks
+/// - `s` must not be freed more than once
 #[no_mangle]
 pub unsafe extern "C" fn chaser_free_string(s: *mut c_char) {
     if !s.is_null() {

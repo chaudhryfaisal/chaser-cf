@@ -171,10 +171,16 @@ impl BrowserManager {
     }
 
     /// Create a new page, optionally in a specific context, with stealth profile applied
+    ///
+    /// # Arguments
+    /// * `ctx_id` - Optional browser context ID (for proxy isolation)
+    /// * `url` - Initial URL for the page
+    /// * `profile_override` - Optional profile to use instead of the default
     pub async fn new_page_in_context(
         &self,
         ctx_id: Option<BrowserContextId>,
         url: &str,
+        profile_override: Option<&ChaserProfile>,
     ) -> ChaserResult<chaser_oxide::Page> {
         let mut params = CreateTargetParams::new(url);
         if let Some(id) = ctx_id {
@@ -187,24 +193,45 @@ impl BrowserManager {
             .await
             .map_err(|e| ChaserError::PageFailed(e.to_string()))?;
 
+        // Use override profile if provided, otherwise use default
+        let profile = profile_override.unwrap_or(&self.profile);
+
         // Wrap in ChaserPage and apply stealth profile (sets UA + injects bootstrap)
         let chaser = ChaserPage::new(page.clone());
         chaser
-            .apply_profile(&self.profile)
+            .apply_profile(profile)
             .await
             .map_err(|e| ChaserError::PageFailed(format!("Failed to apply profile: {}", e)))?;
 
         Ok(page)
     }
 
-    /// Create a new page (uses default context)
+    /// Create a new page (uses default context and profile)
     pub async fn new_page(&self, url: &str) -> ChaserResult<chaser_oxide::Page> {
-        self.new_page_in_context(None, url).await
+        self.new_page_in_context(None, url, None).await
+    }
+
+    /// Create a new page with a specific profile (uses default context)
+    pub async fn new_page_with_profile(
+        &self,
+        url: &str,
+        profile: &ChaserProfile,
+    ) -> ChaserResult<chaser_oxide::Page> {
+        self.new_page_in_context(None, url, Some(profile)).await
     }
 
     /// Wrap a page in ChaserPage for stealth interactions
     pub fn chaser_page(&self, page: chaser_oxide::Page) -> ChaserPage {
         ChaserPage::new(page)
+    }
+
+    /// Build a ChaserProfile from a Profile enum
+    pub fn build_profile(profile: Profile) -> ChaserProfile {
+        match profile {
+            Profile::Windows => ChaserProfile::windows().build(),
+            Profile::Linux => ChaserProfile::linux().build(),
+            Profile::Macos => ChaserProfile::macos_arm().build(),
+        }
     }
 
     /// Shutdown the browser

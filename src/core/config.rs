@@ -74,7 +74,7 @@ impl ChaserConfig {
         }
 
         if let Ok(val) = env::var("CHASER_PROFILE") {
-            if let Some(profile) = Profile::from_str(&val) {
+            if let Some(profile) = Profile::parse(&val) {
                 config.profile = profile;
             }
         }

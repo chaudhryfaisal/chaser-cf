@@ -52,6 +52,10 @@ ChaserConfigFFI chaser_config_default();
 /// # Returns
 /// - 0 on success
 /// - Non-zero error code on failure
+///
+/// # Safety
+/// - `config` must be either NULL or a valid pointer to a `ChaserConfigFFI` struct
+/// - If `config.chrome_path` is not NULL, it must be a valid null-terminated C string
 int32_t chaser_init(const ChaserConfigFFI *config);
 
 /// Shutdown chaser-cf and release resources
@@ -71,6 +75,11 @@ int32_t chaser_is_ready();
 /// - `proxy`: Optional proxy config (NULL for no proxy)
 /// - `user_data`: User context, returned in callback
 /// - `callback`: Function called with JSON result
+///
+/// # Safety
+/// - `url` must be a valid null-terminated C string
+/// - `proxy` must be either NULL or a valid pointer to a `ProxyConfigFFI` struct
+/// - `callback` must be a valid function pointer
 void chaser_solve_waf_async(const char *url,
                             const ProxyConfigFFI *proxy,
                             void *user_data,
@@ -83,6 +92,11 @@ void chaser_solve_waf_async(const char *url,
 /// - `proxy`: Optional proxy config (NULL for no proxy)
 /// - `user_data`: User context, returned in callback
 /// - `callback`: Function called with JSON result
+///
+/// # Safety
+/// - `url` must be a valid null-terminated C string
+/// - `proxy` must be either NULL or a valid pointer to a `ProxyConfigFFI` struct
+/// - `callback` must be a valid function pointer
 void chaser_get_source_async(const char *url,
                              const ProxyConfigFFI *proxy,
                              void *user_data,
@@ -95,6 +109,11 @@ void chaser_get_source_async(const char *url,
 /// - `proxy`: Optional proxy config (NULL for no proxy)
 /// - `user_data`: User context, returned in callback
 /// - `callback`: Function called with JSON result
+///
+/// # Safety
+/// - `url` must be a valid null-terminated C string
+/// - `proxy` must be either NULL or a valid pointer to a `ProxyConfigFFI` struct
+/// - `callback` must be a valid function pointer
 void chaser_solve_turnstile_async(const char *url,
                                   const ProxyConfigFFI *proxy,
                                   void *user_data,
@@ -108,6 +127,12 @@ void chaser_solve_turnstile_async(const char *url,
 /// - `proxy`: Optional proxy config (NULL for no proxy)
 /// - `user_data`: User context, returned in callback
 /// - `callback`: Function called with JSON result
+///
+/// # Safety
+/// - `url` must be a valid null-terminated C string
+/// - `site_key` must be a valid null-terminated C string
+/// - `proxy` must be either NULL or a valid pointer to a `ProxyConfigFFI` struct
+/// - `callback` must be a valid function pointer
 void chaser_solve_turnstile_min_async(const char *url,
                                       const char *site_key,
                                       const ProxyConfigFFI *proxy,
@@ -117,6 +142,10 @@ void chaser_solve_turnstile_min_async(const char *url,
 /// Free a string returned by chaser-cf
 ///
 /// Must be called on any string returned via callbacks.
+///
+/// # Safety
+/// - `s` must be either NULL or a valid pointer previously returned by chaser-cf callbacks
+/// - `s` must not be freed more than once
 void chaser_free_string(char *s);
 
 } // extern "C"

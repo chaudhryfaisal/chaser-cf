@@ -191,6 +191,35 @@ curl -X POST http://localhost:3000/solve \
 curl -X POST http://localhost:3000/solve \
   -H "Content-Type: application/json" \
   -d '{"mode": "turnstile-min", "url": "https://example.com", "siteKey": "0x4AAA..."}'
+
+# With profile override (windows/linux/macos)
+curl -X POST http://localhost:3000/solve \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "waf-session", "url": "https://example.com", "profile": "linux"}'
+```
+
+### Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `mode` | string | Yes | Operation mode: `source`, `waf-session`, `turnstile-max`, `turnstile-min` |
+| `url` | string | Yes | Target URL |
+| `siteKey` | string | For turnstile-min | Turnstile site key |
+| `profile` | string | No | Browser profile: `windows`, `linux`, `macos` (default: server config) |
+| `proxy` | object | No | Proxy configuration (see below) |
+| `authToken` | string | No | API authentication token (if `AUTH_TOKEN` env is set) |
+
+#### Proxy Configuration
+
+```json
+{
+  "proxy": {
+    "host": "proxy.example.com",
+    "port": 8080,
+    "username": "user",
+    "password": "pass"
+  }
+}
 ```
 
 ## Configuration
@@ -226,15 +255,23 @@ let config = ChaserConfig::default()
 
 ```rust
 impl ChaserCF {
+    // Lifecycle
     async fn new(config: ChaserConfig) -> ChaserResult<Self>;
     async fn init(&self) -> ChaserResult<()>;
     async fn shutdown(&self);
     async fn is_ready(&self) -> bool;
     
+    // Standard methods (use default profile from config)
     async fn get_source(&self, url: &str, proxy: Option<ProxyConfig>) -> ChaserResult<String>;
     async fn solve_waf_session(&self, url: &str, proxy: Option<ProxyConfig>) -> ChaserResult<WafSession>;
     async fn solve_turnstile(&self, url: &str, proxy: Option<ProxyConfig>) -> ChaserResult<String>;
     async fn solve_turnstile_min(&self, url: &str, site_key: &str, proxy: Option<ProxyConfig>) -> ChaserResult<String>;
+    
+    // Methods with profile override
+    async fn get_source_with_profile(&self, url: &str, proxy: Option<ProxyConfig>, profile: Option<Profile>) -> ChaserResult<String>;
+    async fn solve_waf_session_with_profile(&self, url: &str, proxy: Option<ProxyConfig>, profile: Option<Profile>) -> ChaserResult<WafSession>;
+    async fn solve_turnstile_with_profile(&self, url: &str, proxy: Option<ProxyConfig>, profile: Option<Profile>) -> ChaserResult<String>;
+    async fn solve_turnstile_min_with_profile(&self, url: &str, site_key: &str, proxy: Option<ProxyConfig>, profile: Option<Profile>) -> ChaserResult<String>;
 }
 ```
 
