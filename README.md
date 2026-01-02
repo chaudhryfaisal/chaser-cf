@@ -7,7 +7,7 @@ High-performance Cloudflare bypass library with stealth browser automation. Rust
 - **WAF Session**: Extract cookies and headers for authenticated requests
 - **Turnstile Solver**: Solve Cloudflare Turnstile captchas (min and max modes)
 - **Page Source**: Get HTML source from Cloudflare-protected pages
-- **Stealth Profiles**: Windows, Linux, macOS fingerprint profiles
+- **Stealth Profiles**: Windows, Linux, macOS fingerprint profiles (Windows recommended for Turnstile)
 - **C FFI Bindings**: Use from Python, Go, Node.js, C/C++, and more
 - **Low Memory**: ~50-100MB footprint vs ~500MB+ for Node.js alternatives
 
@@ -331,6 +331,21 @@ All operations return JSON:
 
 - [chaser_oxide](https://github.com/ccheshirecat/chaser-oxide) - Stealth browser automation (fork of chromiumoxide)
 - Chrome/Chromium browser installed on system
+
+## Known Issues
+
+### macOS Profile + Turnstile
+
+The macOS profile may fail Turnstile challenges with error `600010` even though standard bot detection tests pass. This is due to subtle viewport emulation artifacts in CDP (Chrome DevTools Protocol) that Cloudflare detects.
+
+**Workaround**: Use the Windows profile for Turnstile solving:
+
+```rust
+let config = ChaserConfig::new()
+    .with_profile(Profile::Windows);  // Recommended for Turnstile
+```
+
+The macOS profile works fine for WAF sessions and page source extraction.
 
 ## License
 
