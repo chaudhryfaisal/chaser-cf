@@ -56,11 +56,20 @@ impl BrowserManager {
             browser_config = browser_config.with_head();
         }
 
-        // Set viewport
+        // Set viewport to match profile (use config override if set, otherwise profile defaults)
+        let (vp_width, vp_height) =
+            if config.viewport_width != 1920 || config.viewport_height != 1080 {
+                // User explicitly set viewport, use their values
+                (config.viewport_width, config.viewport_height)
+            } else {
+                // Use profile's screen dimensions as viewport
+                (profile.screen_width(), profile.screen_height())
+            };
+
         browser_config = browser_config.viewport(Viewport {
-            width: config.viewport_width,
-            height: config.viewport_height,
-            device_scale_factor: None,
+            width: vp_width,
+            height: vp_height,
+            device_scale_factor: Some(profile.device_pixel_ratio() as f64),
             emulating_mobile: false,
             is_landscape: false,
             has_touch: false,
