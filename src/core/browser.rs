@@ -58,21 +58,15 @@ impl BrowserManager {
 
         // Set viewport to match profile (use config override if set, otherwise profile defaults)
         let dpr = profile.device_pixel_ratio();
-        let (screen_w, screen_h) =
+        let (vp_width, vp_height) =
             if config.viewport_width != 1920 || config.viewport_height != 1080 {
                 // User explicitly set viewport, use their values
                 (config.viewport_width, config.viewport_height)
             } else {
-                // Use profile's screen dimensions
+                // Use profile's screen dimensions as viewport
+                // innerWidth/Height will equal these values
                 (profile.screen_width(), profile.screen_height())
             };
-
-        // CDP viewport dimensions are in logical pixels. When DPR > 1, we need to
-        // divide by DPR so that innerWidth/Height (which get scaled up by DPR)
-        // match our target screen dimensions. Otherwise inner > outer which is
-        // a detectable inconsistency.
-        let vp_width = (screen_w as f32 / dpr) as u32;
-        let vp_height = (screen_h as f32 / dpr) as u32;
 
         browser_config = browser_config.viewport(Viewport {
             width: vp_width,
