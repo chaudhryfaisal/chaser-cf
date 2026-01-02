@@ -8,7 +8,6 @@ use crate::models::{Profile, ProxyConfig};
 
 use chaser_oxide::cdp::browser_protocol::browser::BrowserContextId;
 use chaser_oxide::cdp::browser_protocol::target::CreateTargetParams;
-use chaser_oxide::handler::viewport::Viewport;
 use chaser_oxide::{Browser, BrowserConfig, ChaserPage, ChaserProfile};
 use futures::StreamExt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -43,8 +42,14 @@ impl BrowserManager {
             Profile::Macos => ChaserProfile::macos_arm().build(),
         };
 
-        // Build browser config
-        let mut browser_config = BrowserConfig::builder();
+        // Build browser config WITH all stealth settings from profile
+        let mut browser_config = BrowserConfig::builder()
+            .window_size(profile.screen_width(), profile.screen_height())
+            .args(vec![
+                "--disable-blink-features=AutomationControlled".to_string(),
+                "--disable-infobars".to_string(),
+                format!("--window-size={},{}", profile.screen_width(), profile.screen_height()),
+            ]);
 
         // Set Chrome path if specified
         if let Some(ref path) = config.chrome_path {
@@ -55,27 +60,6 @@ impl BrowserManager {
         if !config.headless {
             browser_config = browser_config.with_head();
         }
-
-        // Set viewport to match profile (use config override if set, otherwise profile defaults)
-        let dpr = profile.device_pixel_ratio();
-        let (vp_width, vp_height) =
-            if config.viewport_width != 1920 || config.viewport_height != 1080 {
-                // User explicitly set viewport, use their values
-                (config.viewport_width, config.viewport_height)
-            } else {
-                // Use profile's screen dimensions as viewport
-                // innerWidth/Height will equal these values
-                (profile.screen_width(), profile.screen_height())
-            };
-
-        browser_config = browser_config.viewport(Viewport {
-            width: vp_width,
-            height: vp_height,
-            device_scale_factor: Some(dpr as f64),
-            emulating_mobile: false,
-            is_landscape: false,
-            has_touch: false,
-        });
 
         let browser_config = browser_config
             .build()

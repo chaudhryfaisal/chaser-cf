@@ -128,12 +128,13 @@ pub async fn solve_waf_session(
     // Build headers
     let mut headers = HashMap::new();
 
-    // Get user agent from page
-    let user_agent = page
+    // Get user agent from page using stealth evaluation
+    let chaser = chaser_oxide::ChaserPage::new(page.clone());
+    let user_agent = chaser
         .evaluate("navigator.userAgent")
         .await
         .ok()
-        .and_then(|v| v.into_value::<String>().ok())
+        .and_then(|v| v?.as_str().map(|s| s.to_string()))
         .unwrap_or_default();
 
     headers.insert("user-agent".to_string(), user_agent);
@@ -292,12 +293,16 @@ const TURNSTILE_EXTRACTOR_SCRIPT: &str = r#"
 "#;
 
 /// Wait for Turnstile token to be available
+/// Uses evaluate_main() because window.turnstile is set by page scripts (main world)
 async fn wait_for_turnstile_token(
     page: &chaser_oxide::Page,
     timeout_seconds: u64,
 ) -> ChaserResult<String> {
     let start = std::time::Instant::now();
     let timeout = Duration::from_secs(timeout_seconds);
+
+    // Wrap in ChaserPage for stealth evaluation
+    let chaser = chaser_oxide::ChaserPage::new(page.clone());
 
     loop {
         if start.elapsed() > timeout {
@@ -306,11 +311,17 @@ async fn wait_for_turnstile_token(
             ));
         }
 
-        // Try to get the token from the hidden input
-        let result = page
-            .evaluate(
+        // Try to get the token - MUST use main world because window.turnstile is there
+        let result = chaser
+            .evaluate_main(
                 r#"
                 (function() {
+                    // First check if turnstile object exists and has a response
+                    if (window.turnstile && typeof window.turnstile.getResponse === 'function') {
+                        var token = window.turnstile.getResponse();
+                        if (token) return token;
+                    }
+                    // Fallback: check for cf-response element (from our injected script)
                     var el = document.querySelector('[name="cf-response"]');
                     return el ? el.value : null;
                 })()
@@ -318,10 +329,10 @@ async fn wait_for_turnstile_token(
             )
             .await;
 
-        if let Ok(value) = result {
-            if let Ok(token) = value.into_value::<String>() {
+        if let Ok(Some(value)) = result {
+            if let Some(token) = value.as_str() {
                 if token.len() > 10 {
-                    return Ok(token);
+                    return Ok(token.to_string());
                 }
             }
         }
@@ -331,8 +342,11 @@ async fn wait_for_turnstile_token(
 }
 
 /// Get Accept-Language header via httpbin
+/// Uses stealth evaluation (isolated world) - fetch works there
 async fn get_accept_language(page: &chaser_oxide::Page) -> Option<String> {
-    let result = page
+    let chaser = chaser_oxide::ChaserPage::new(page.clone());
+    
+    let result = chaser
         .evaluate(
             r#"
             fetch("https://httpbin.org/get")
@@ -344,7 +358,7 @@ async fn get_accept_language(page: &chaser_oxide::Page) -> Option<String> {
         .await
         .ok()?;
 
-    result.into_value::<String>().ok()
+    result?.as_str().map(|s| s.to_string())
 }
 
 /// Check if page content appears to be a Cloudflare challenge page
