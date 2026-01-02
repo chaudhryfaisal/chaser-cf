@@ -185,7 +185,7 @@ impl BrowserManager {
     ///
     /// # Arguments
     /// * `ctx_id` - Optional browser context ID (for proxy isolation)
-    /// * `url` - Initial URL for the page
+    /// * `url` - Initial URL for the page (navigated to AFTER profile is applied)
     /// * `profile_override` - Optional profile to use instead of the default
     pub async fn new_page_in_context(
         &self,
@@ -193,7 +193,10 @@ impl BrowserManager {
         url: &str,
         profile_override: Option<&ChaserProfile>,
     ) -> ChaserResult<chaser_oxide::Page> {
-        let mut params = CreateTargetParams::new(url);
+        // CRITICAL: Create page with about:blank first, apply profile, THEN navigate
+        // The stealth scripts use AddScriptToEvaluateOnNewDocumentParams which only
+        // applies to FUTURE document loads, not the current one!
+        let mut params = CreateTargetParams::new("about:blank");
         if let Some(id) = ctx_id {
             params.browser_context_id = Some(id);
         }
@@ -207,12 +210,20 @@ impl BrowserManager {
         // Use override profile if provided, otherwise use default
         let profile = profile_override.unwrap_or(&self.profile);
 
-        // Wrap in ChaserPage and apply stealth profile (sets UA + injects bootstrap)
+        // Wrap in ChaserPage and apply stealth profile BEFORE navigation
+        // This registers scripts for all future document loads
         let chaser = ChaserPage::new(page.clone());
         chaser
             .apply_profile(profile)
             .await
             .map_err(|e| ChaserError::PageFailed(format!("Failed to apply profile: {}", e)))?;
+
+        // NOW navigate to the actual URL - stealth scripts will apply
+        if url != "about:blank" {
+            page.goto(url)
+                .await
+                .map_err(|e| ChaserError::NavigationFailed(e.to_string()))?;
+        }
 
         Ok(page)
     }
