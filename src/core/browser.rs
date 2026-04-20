@@ -95,6 +95,15 @@ impl BrowserManager {
             normalize_chrome_flag("--disable-blink-features=AutomationControlled"),
             normalize_chrome_flag("--disable-infobars"),
         ];
+
+        // On Linux headless, Chrome defaults to an 800×600 window which makes
+        // window.innerWidth/innerHeight inconsistent with the 1920×1080 screen we
+        // spoof. Setting the actual window size makes all four values agree.
+        #[cfg(target_os = "linux")]
+        if config.headless && !config.virtual_display {
+            chrome_args.push(normalize_chrome_flag("--window-size=1920,1080"));
+        }
+
         chrome_args.extend(config.extra_args.iter().map(|a| normalize_chrome_flag(a)));
 
         let mut builder = BrowserConfig::builder().viewport(None).args(chrome_args);
@@ -286,62 +295,31 @@ impl BrowserManager {
 
 /// Extra `addScriptToEvaluateOnNewDocument` patch for Linux headless.
 ///
-/// Chrome headless on Linux reports screen dimensions as 0×0 (or 800×600) and
-/// navigator.plugins as an empty list — both trivial bot signals. This script
-/// spoofs them to match a realistic 1920×1080 Windows desktop so the values
-/// are consistent with the Windows UA already set by `apply_profile`.
+/// Patches the remaining signals that differ between Linux headless and a real
+/// Windows desktop. `--window-size=1920,1080` handles innerWidth/outerWidth at
+/// the Chrome level; this script handles screen object and Notification.
 /// Injected into every frame (including the Cloudflare Turnstile iframe).
 #[cfg(target_os = "linux")]
 const LINUX_SCREEN_PATCH: &str = r#"(function () {
-    // Screen — Linux headless defaults to 0×0 or 800×600
+    // Screen — Linux headless reports 800×600 even with --window-size=1920,1080.
+    // A real 1920×1080 desktop: availHeight = height - taskbar (~40px).
     const W = 1920, H = 1080;
-    const screenDesc = (v) => ({ get: () => v, configurable: true });
+    const sd = (v) => ({ get: () => v, configurable: true });
     Object.defineProperties(screen, {
-        width:       screenDesc(W),
-        height:      screenDesc(H),
-        availWidth:  screenDesc(W),
-        availHeight: screenDesc(H - 40),
-        availTop:    screenDesc(0),
-        availLeft:   screenDesc(0),
-        colorDepth:  screenDesc(24),
-        pixelDepth:  screenDesc(24),
+        width:       sd(W),
+        height:      sd(H),
+        availWidth:  sd(W),
+        availHeight: sd(H - 40),
+        availTop:    sd(0),
+        availLeft:   sd(0),
+        colorDepth:  sd(24),
+        pixelDepth:  sd(24),
     });
 
-    // outerWidth/outerHeight are 0 in Linux headless=new
-    Object.defineProperty(window, 'outerWidth',  { get: () => W, configurable: true });
-    Object.defineProperty(window, 'outerHeight', { get: () => H, configurable: true });
-
-    // navigator.plugins — empty in headless, real Chrome ships with PDF Viewer
-    const makeMime = (type, desc, suffixes) =>
-        Object.assign(Object.create(MimeType.prototype), { type, description: desc, suffixes });
-    const pdfMime = makeMime('application/pdf', 'Portable Document Format', 'pdf');
-
-    const makePlugin = (name, desc, filename, mime) => {
-        const p = Object.create(Plugin.prototype);
-        Object.assign(p, { name, description: desc, filename, length: 1 });
-        p[0] = mime;
-        p.item = (i) => (i === 0 ? mime : null);
-        p.namedItem = (n) => (n === mime.type ? mime : null);
-        return p;
-    };
-    const pdfPlugin = makePlugin(
-        'PDF Viewer', 'Portable Document Format', 'internal-pdf-viewer', pdfMime
-    );
-
-    const pluginArray = Object.create(PluginArray.prototype);
-    pluginArray[0] = pdfPlugin;
-    Object.defineProperty(pluginArray, 'length', { get: () => 1 });
-    pluginArray.item       = (i)    => (i === 0 ? pdfPlugin : null);
-    pluginArray.namedItem  = (name) => (name === 'PDF Viewer' ? pdfPlugin : null);
-    pluginArray.refresh    = () => {};
-    Object.defineProperty(Navigator.prototype, 'plugins', { get: () => pluginArray, configurable: true });
-
-    const mimeArray = Object.create(MimeTypeArray.prototype);
-    mimeArray[0] = pdfMime;
-    Object.defineProperty(mimeArray, 'length', { get: () => 1 });
-    mimeArray.item      = (i)    => (i === 0 ? pdfMime : null);
-    mimeArray.namedItem = (type) => (type === 'application/pdf' ? pdfMime : null);
-    Object.defineProperty(Navigator.prototype, 'mimeTypes', { get: () => mimeArray, configurable: true });
+    // Notification.permission — headless defaults to "denied"; real first-visit is "default".
+    try {
+        Object.defineProperty(Notification, 'permission', { get: () => 'default', configurable: true });
+    } catch (_) {}
 })();"#;
 
 /// Find the lowest unused X display number by checking /tmp/.X{n}-lock.
