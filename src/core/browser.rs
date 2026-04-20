@@ -90,12 +90,16 @@ impl BrowserManager {
             normalize_chrome_flag("--disable-infobars"),
         ];
 
-        // On Linux headless, Chrome defaults to an 800×600 window which makes
-        // window.innerWidth/innerHeight inconsistent with the 1920×1080 screen we
-        // spoof. Setting the actual window size makes all four values agree.
+        // On Linux headless: set window to 1920×1080 so inner/outer dimensions
+        // match the screen dimensions we set via setDeviceMetricsOverride.
+        // Also disable WebGL — headless uses SwiftShader (software rasterizer)
+        // which is a detectable bot signal. Xvfb mode has no WebGL context at
+        // all and passes CF challenges fine, so headless matches that behaviour.
         #[cfg(target_os = "linux")]
         if config.headless && !config.virtual_display {
             chrome_args.push(normalize_chrome_flag("--window-size=1920,1080"));
+            chrome_args.push(normalize_chrome_flag("--disable-webgl"));
+            chrome_args.push(normalize_chrome_flag("--disable-webgl2"));
         }
 
         chrome_args.extend(config.extra_args.iter().map(|a| normalize_chrome_flag(a)));
