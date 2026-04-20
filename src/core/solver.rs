@@ -53,7 +53,7 @@ pub async fn solve_waf_session(
         .await
         .map_err(|e| ChaserError::NavigationFailed(e.to_string()))?;
 
-    wait_for_clearance(&page, &chaser, 30).await;
+    wait_for_clearance(&page, &chaser, 90).await;
 
     let raw_cookies = page
         .get_cookies()
@@ -196,20 +196,27 @@ async fn setup_proxy_auth(
 }
 
 /// Poll until `cf_clearance` appears (meaning the challenge was solved) or the
-/// timeout expires. If a challenge is still active, try clicking the Turnstile
-/// checkbox via CDP shadow-root traversal every ~1.5 seconds.
+/// timeout expires.
+///
+/// For the first `PASSIVE_WAIT_MS` milliseconds we do nothing — the CF managed
+/// challenge JS runs its invisible PoW/fingerprint in this window. Polling the
+/// DOM while it runs causes timing anomalies that raise the bot score. After
+/// the passive window we check whether a Turnstile widget has appeared and, if
+/// so, click it using the shadow-root CDP traversal.
 async fn wait_for_clearance(
     page: &chaser_oxide::Page,
     chaser: &chaser_oxide::ChaserPage,
     timeout_seconds: u64,
 ) {
+    const PASSIVE_WAIT_MS: u64 = 6_000;
+    const CLICK_INTERVAL_MS: u64 = 1_200;
+
     let started = std::time::Instant::now();
     let timeout = Duration::from_secs(timeout_seconds);
     let mut last_click = started - Duration::from_secs(30);
 
     loop {
         if has_clearance_cookie(page).await {
-            // Small settle delay so Set-Cookie propagates fully.
             tokio::time::sleep(Duration::from_millis(500)).await;
             return;
         }
@@ -218,12 +225,15 @@ async fn wait_for_clearance(
             return;
         }
 
-        if last_click.elapsed() >= Duration::from_millis(800) {
+        // Only start DOM inspection / clicking after the passive window.
+        if started.elapsed().as_millis() as u64 >= PASSIVE_WAIT_MS
+            && last_click.elapsed().as_millis() as u64 >= CLICK_INTERVAL_MS
+        {
             try_click_challenge(chaser).await;
             last_click = std::time::Instant::now();
         }
 
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        tokio::time::sleep(Duration::from_millis(400)).await;
     }
 }
 
