@@ -1,13 +1,9 @@
 //! Browser management for chaser-cf
 
 use crate::error::{ChaserError, ChaserResult};
-#[cfg(target_os = "linux")]
-use crate::models::Profile;
 use crate::models::ProxyConfig;
 
 use chaser_oxide::cdp::browser_protocol::target::CreateTargetParams;
-#[cfg(target_os = "linux")]
-use chaser_oxide::ChaserProfile;
 use chaser_oxide::{Browser, BrowserConfig, ChaserPage};
 use futures::StreamExt;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -38,8 +34,6 @@ pub struct BrowserManager {
     active_contexts: Arc<AtomicUsize>,
     max_contexts: usize,
     healthy: Arc<AtomicBool>,
-    #[cfg(target_os = "linux")]
-    profile: Profile,
     #[cfg(target_os = "linux")]
     xvfb: Option<std::process::Child>,
 }
@@ -153,8 +147,6 @@ impl BrowserManager {
             max_contexts: config.context_limit,
             healthy,
             #[cfg(target_os = "linux")]
-            profile: config.profile,
-            #[cfg(target_os = "linux")]
             xvfb,
         })
     }
@@ -245,43 +237,27 @@ impl BrowserManager {
 
         #[cfg(target_os = "linux")]
         {
-            if self.xvfb.is_some() {
-                // Xvfb headed mode: native Linux profile is correct and sufficient.
-                chaser
-                    .apply_native_profile()
-                    .await
-                    .map_err(|e| ChaserError::PageFailed(format!("apply_native_profile: {e}")))?;
-            } else {
-                // Headless mode: override with configured profile (default: Windows).
-                let chrome_ver = chaser_oxide::detect_chrome_version().unwrap_or(131);
-                let memory_gb = chaser_oxide::detect_system_memory_gb();
-                let fingerprint = match self.profile {
-                    Profile::Windows => ChaserProfile::windows()
-                        .chrome_version(chrome_ver)
-                        .memory_gb(memory_gb)
-                        .build(),
-                    Profile::Macos => ChaserProfile::macos_arm()
-                        .chrome_version(chrome_ver)
-                        .memory_gb(memory_gb)
-                        .build(),
-                    Profile::Linux => ChaserProfile::linux()
-                        .chrome_version(chrome_ver)
-                        .memory_gb(memory_gb)
-                        .build(),
-                };
-                chaser
-                    .apply_profile(&fingerprint)
-                    .await
-                    .map_err(|e| ChaserError::PageFailed(format!("apply_profile: {e}")))?;
+            // Always use the native profile on Linux — both headless and Xvfb.
+            // Cloudflare compares the HTTP Sec-CH-UA headers with JS navigator.userAgentData;
+            // if we spoof with a Windows profile, the Chromium binary sends "Chromium" (no
+            // "Google Chrome") in Sec-CH-UA while our JS says "Google Chrome" → instant
+            // detection. Native profile keeps both consistent and matches what cf-clearance-scraper
+            // sends. The configured Profile is honoured only on macOS/Windows builds.
+            chaser
+                .apply_native_profile()
+                .await
+                .map_err(|e| ChaserError::PageFailed(format!("apply_native_profile: {e}")))?;
+
+            // Headless-only screen patch: --window-size sets innerWidth/outerWidth but
+            // screen.* still reports 800×600 without this.
+            if self.xvfb.is_none() {
                 page.evaluate_on_new_document(LINUX_SCREEN_PATCH)
                     .await
                     .map_err(|e| ChaserError::PageFailed(format!("screen_patch: {e}")))?;
             }
 
             // Applied in both modes: fix navigator.permissions.query so it returns
-            // the same state as Notification.permission. Without this, permissions.query
-            // returns 'denied' while Notification.permission is 'default' — a
-            // detectable inconsistency that puppeteer-extra-plugin-stealth also patches.
+            // the same state as Notification.permission.
             page.evaluate_on_new_document(LINUX_PERMS_PATCH)
                 .await
                 .map_err(|e| ChaserError::PageFailed(format!("perms_patch: {e}")))?;
