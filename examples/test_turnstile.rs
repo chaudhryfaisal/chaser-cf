@@ -1,4 +1,4 @@
-use chaser_cf::{ChaserCF, ChaserConfig, ProxyConfig};
+use chaser_cf::{ChaserCF, ChaserConfig, ProxyConfig, models::Profile};
 use std::env;
 
 fn usage() {
@@ -42,6 +42,7 @@ async fn main() -> anyhow::Result<()> {
     let mut site_key: Option<String> = None;
     let mut timeout_ms: u64 = 120_000;
     let mut mode = "waf".to_string();
+    let mut profile: Option<Profile> = None;
 
     let mut i = 2;
     while i < args.len() {
@@ -75,6 +76,10 @@ async fn main() -> anyhow::Result<()> {
                 i += 1;
                 mode = args[i].clone();
             }
+            "--profile" => {
+                i += 1;
+                profile = Profile::parse(&args[i]);
+            }
             other => {
                 eprintln!("Unknown argument: {other}");
                 usage();
@@ -103,6 +108,9 @@ async fn main() -> anyhow::Result<()> {
         .with_timeout_ms(timeout_ms)
         .with_headless(headless)
         .with_virtual_display(virtual_display);
+    if let Some(p) = profile {
+        config = config.with_profile(p);
+    }
     if no_sandbox {
         config = config.with_extra_args(vec!["--no-sandbox".to_string()]);
     }
