@@ -244,7 +244,20 @@ impl BrowserManager {
             .map_err(|e| ChaserError::PageFailed(format!("apply_native_profile: {e}")))?;
 
         #[cfg(target_os = "linux")]
-        {
+        if self.xvfb.is_some() {
+            // Xvfb headed mode: native Linux profile is correct and sufficient.
+            // Spoofing Windows here creates inconsistencies between HTTP headers
+            // and actual browser rendering that Cloudflare can detect. Leave it
+            // native — headed Chrome on a real (virtual) display passes as-is,
+            // exactly like other Linux-based tools that succeed with Linux UA.
+            chaser
+                .apply_native_profile()
+                .await
+                .map_err(|e| ChaserError::PageFailed(format!("apply_native_profile: {e}")))?;
+        } else {
+            // Headless mode: native Linux UA leaks Os::Linux into Sec-CH-UA-Platform
+            // and platform-version becomes empty string — strong headless signals.
+            // Override with the configured profile (default: Windows).
             let chrome_ver = chaser_oxide::detect_chrome_version().unwrap_or(131);
             let memory_gb = chaser_oxide::detect_system_memory_gb();
             let fingerprint = match self.profile {
@@ -265,10 +278,6 @@ impl BrowserManager {
                 .apply_profile(&fingerprint)
                 .await
                 .map_err(|e| ChaserError::PageFailed(format!("apply_profile: {e}")))?;
-
-            // On Linux headless, screen dimensions and navigator.plugins are
-            // zero/empty by default — a strong bot signal Cloudflare checks.
-            // Patch them to match a realistic 1920×1080 Windows desktop.
             page.evaluate_on_new_document(LINUX_SCREEN_PATCH)
                 .await
                 .map_err(|e| ChaserError::PageFailed(format!("screen_patch: {e}")))?;
