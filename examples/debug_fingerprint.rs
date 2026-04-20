@@ -37,16 +37,18 @@ const FP_SCRIPT: &str = r#"JSON.stringify({
     webglVendor: (() => {
         try {
             const g = document.createElement('canvas').getContext('webgl');
-            if (!g) return 'no webgl';
-            return g.getParameter(37445);
-        } catch(e) { return 'error'; }
+            if (!g) return 'no webgl context';
+            const ext = g.getExtension('WEBGL_debug_renderer_info');
+            return g.getParameter(ext ? ext.UNMASKED_VENDOR_WEBGL : 37445);
+        } catch(e) { return 'error: ' + e; }
     })(),
     webglRenderer: (() => {
         try {
             const g = document.createElement('canvas').getContext('webgl');
-            if (!g) return 'no webgl';
-            return g.getParameter(37446);
-        } catch(e) { return 'error'; }
+            if (!g) return 'no webgl context';
+            const ext = g.getExtension('WEBGL_debug_renderer_info');
+            return g.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : 37446);
+        } catch(e) { return 'error: ' + e; }
     })(),
 }, null, 2)"#;
 
@@ -88,7 +90,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let mgr = BrowserManager::new(&config).await?;
-    let (page, _chaser) = mgr.new_page(None, "about:blank").await?;
+    // Navigate to a real URL so addScriptToEvaluateOnNewDocument fires.
+    // We use a neutral data: URL to avoid any external influence.
+    let (page, _chaser) = mgr.new_page(None, "data:text/html,<html><body>fp</body></html>").await?;
 
     // Basic fingerprint
     let fp: Option<serde_json::Value> = page.evaluate(FP_SCRIPT).await?.into_value()?;
