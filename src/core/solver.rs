@@ -281,65 +281,93 @@ async fn try_click_challenge(chaser: &chaser_oxide::ChaserPage) {
     let cx = (content[0] + content[2]) / 2.0;
     let cy = (content[1] + content[5]) / 2.0;
 
-    // Small random jitter so we never click the exact center every time.
-    let (jx, jy, pre_ms) = {
-        use rand::Rng as _;
-        let mut rng = rand::rng();
-        (
-            rng.random_range(-4.0..=4.0_f64),
-            rng.random_range(-3.0..=3.0_f64),
-            rng.random_range(60..180_u64),
-        )
-    };
-    let tx = cx + jx;
-    let ty = cy + jy;
+    use rand::Rng as _;
+    let mut rng = rand::rng();
 
-    // Curved approach from slightly above-left.
-    let sx = tx - 80.0;
-    let sy = ty - 35.0;
-    for i in 1..=5_u8 {
-        let t = i as f64 / 5.0;
-        let arc = (std::f64::consts::PI * t).sin() * 8.0;
+    // Land slightly off-centre so every click is unique.
+    let tx = cx + rng.random_range(-5.0..=5.0_f64);
+    let ty = cy + rng.random_range(-4.0..=4.0_f64);
+
+    // Ghost-cursor style: cubic Bezier from a random off-screen origin.
+    // P0 = start (random position away from target), P3 = target.
+    // P1, P2 are random control points that produce a natural arc.
+    let p0x = tx + rng.random_range(-200.0..=-60.0_f64);
+    let p0y = ty + rng.random_range(-120.0..=120.0_f64);
+    let p1x = p0x + (tx - p0x) * rng.random_range(0.2..0.5_f64) + rng.random_range(-30.0..30.0);
+    let p1y = p0y + (ty - p0y) * rng.random_range(0.1..0.4_f64) + rng.random_range(-40.0..40.0);
+    let p2x = p0x + (tx - p0x) * rng.random_range(0.5..0.8_f64) + rng.random_range(-20.0..20.0);
+    let p2y = p0y + (ty - p0y) * rng.random_range(0.5..0.9_f64) + rng.random_range(-20.0..20.0);
+
+    let steps: u8 = rng.random_range(12..22);
+    for i in 1..=steps {
+        let t = i as f64 / steps as f64;
+        let u = 1.0 - t;
+        // Cubic Bezier: B(t) = u³P0 + 3u²tP1 + 3ut²P2 + t³P3
+        let bx = u*u*u*p0x + 3.0*u*u*t*p1x + 3.0*u*t*t*p2x + t*t*t*tx;
+        let by = u*u*u*p0y + 3.0*u*u*t*p1y + 3.0*u*t*t*p2y + t*t*t*ty;
         let _ = page
-            .move_mouse(chaser_oxide::layout::Point::new(
-                sx + (tx - sx) * t + arc,
-                sy + (ty - sy) * t,
-            ))
+            .move_mouse(chaser_oxide::layout::Point::new(bx, by))
             .await;
-        let step_ms = {
-            use rand::Rng as _;
-            rand::rng().random_range(25..70_u64)
-        };
-        tokio::time::sleep(Duration::from_millis(step_ms)).await;
+        // Slow down near the target (ease-in-out feel).
+        let speed = (4.0 * t * (1.0 - t)).max(0.1);
+        let step_ms = (rng.random_range(8.0..22.0_f64) / speed) as u64;
+        tokio::time::sleep(Duration::from_millis(step_ms.min(80))).await;
     }
 
-    tokio::time::sleep(Duration::from_millis(pre_ms)).await;
+    tokio::time::sleep(Duration::from_millis(rng.random_range(40..120_u64))).await;
     let _ = page.click(chaser_oxide::layout::Point::new(tx, ty)).await;
 }
 
-/// Walk the CDP DOM tree (shadow roots included via `pierce: true`) and return the
-/// `NodeId` of the first visible child inside any shadow root — the Turnstile widget.
+/// Walk the CDP DOM tree and return the NodeId to click for the Turnstile challenge.
+///
+/// Strategy (per Cloudflare's actual DOM layout):
+///   1. Find the node whose DIRECT children include `<input name="cf-turnstile-response">`.
+///   2. That node is the shadow host — check its `shadow_roots[0]` (CLOSED shadow root,
+///      invisible to JS but exposed by CDP's `pierce: true`).
+///   3. Return the first child of the shadow root that is NOT `display:none` — that is
+///      the visible challenge element whose centre we click.
 fn find_shadow_challenge_node(
     node: &chaser_oxide::cdp::browser_protocol::dom::Node,
 ) -> Option<chaser_oxide::cdp::browser_protocol::dom::NodeId> {
-    if let Some(shadow_roots) = &node.shadow_roots {
-        for sr in shadow_roots {
-            if let Some(children) = &sr.children {
-                for child in children {
-                    let attrs = child.attributes.as_deref().unwrap_or(&[]);
-                    let hidden = attrs
-                        .chunks(2)
-                        .any(|p| p.len() == 2 && p[0] == "style" && p[1].contains("display: none"));
-                    if !hidden {
-                        return Some(child.node_id);
-                    }
+    let children = node.children.as_deref().unwrap_or(&[]);
+
+    // Is this node the shadow host? (has a cf-turnstile-response input as a direct child)
+    let is_shadow_host = children.iter().any(|child| {
+        child
+            .attributes
+            .as_deref()
+            .unwrap_or(&[])
+            .chunks(2)
+            .any(|p| p.len() == 2 && p[0] == "name" && p[1] == "cf-turnstile-response")
+    });
+
+    if is_shadow_host {
+        if let Some(sr) = node.shadow_roots.as_ref().and_then(|srs| srs.first()) {
+            for sr_child in sr.children.as_deref().unwrap_or(&[]) {
+                let hidden = sr_child
+                    .attributes
+                    .as_deref()
+                    .unwrap_or(&[])
+                    .chunks(2)
+                    .any(|p| p.len() == 2 && p[0] == "style" && p[1].contains("display: none"));
+                if !hidden {
+                    return Some(sr_child.node_id);
                 }
             }
         }
     }
-    for child in node.children.as_deref().unwrap_or(&[]) {
+
+    // Recurse into children and shadow roots
+    for child in children {
         if let Some(id) = find_shadow_challenge_node(child) {
             return Some(id);
+        }
+    }
+    for sr in node.shadow_roots.as_deref().unwrap_or(&[]) {
+        for sr_child in sr.children.as_deref().unwrap_or(&[]) {
+            if let Some(id) = find_shadow_challenge_node(sr_child) {
+                return Some(id);
+            }
         }
     }
     None
