@@ -244,43 +244,47 @@ impl BrowserManager {
             .map_err(|e| ChaserError::PageFailed(format!("apply_native_profile: {e}")))?;
 
         #[cfg(target_os = "linux")]
-        if self.xvfb.is_some() {
-            // Xvfb headed mode: native Linux profile is correct and sufficient.
-            // Spoofing Windows here creates inconsistencies between HTTP headers
-            // and actual browser rendering that Cloudflare can detect. Leave it
-            // native — headed Chrome on a real (virtual) display passes as-is,
-            // exactly like other Linux-based tools that succeed with Linux UA.
-            chaser
-                .apply_native_profile()
+        {
+            if self.xvfb.is_some() {
+                // Xvfb headed mode: native Linux profile is correct and sufficient.
+                chaser
+                    .apply_native_profile()
+                    .await
+                    .map_err(|e| ChaserError::PageFailed(format!("apply_native_profile: {e}")))?;
+            } else {
+                // Headless mode: override with configured profile (default: Windows).
+                let chrome_ver = chaser_oxide::detect_chrome_version().unwrap_or(131);
+                let memory_gb = chaser_oxide::detect_system_memory_gb();
+                let fingerprint = match self.profile {
+                    Profile::Windows => ChaserProfile::windows()
+                        .chrome_version(chrome_ver)
+                        .memory_gb(memory_gb)
+                        .build(),
+                    Profile::Macos => ChaserProfile::macos_arm()
+                        .chrome_version(chrome_ver)
+                        .memory_gb(memory_gb)
+                        .build(),
+                    Profile::Linux => ChaserProfile::linux()
+                        .chrome_version(chrome_ver)
+                        .memory_gb(memory_gb)
+                        .build(),
+                };
+                chaser
+                    .apply_profile(&fingerprint)
+                    .await
+                    .map_err(|e| ChaserError::PageFailed(format!("apply_profile: {e}")))?;
+                page.evaluate_on_new_document(LINUX_SCREEN_PATCH)
+                    .await
+                    .map_err(|e| ChaserError::PageFailed(format!("screen_patch: {e}")))?;
+            }
+
+            // Applied in both modes: fix navigator.permissions.query so it returns
+            // the same state as Notification.permission. Without this, permissions.query
+            // returns 'denied' while Notification.permission is 'default' — a
+            // detectable inconsistency that puppeteer-extra-plugin-stealth also patches.
+            page.evaluate_on_new_document(LINUX_PERMS_PATCH)
                 .await
-                .map_err(|e| ChaserError::PageFailed(format!("apply_native_profile: {e}")))?;
-        } else {
-            // Headless mode: native Linux UA leaks Os::Linux into Sec-CH-UA-Platform
-            // and platform-version becomes empty string — strong headless signals.
-            // Override with the configured profile (default: Windows).
-            let chrome_ver = chaser_oxide::detect_chrome_version().unwrap_or(131);
-            let memory_gb = chaser_oxide::detect_system_memory_gb();
-            let fingerprint = match self.profile {
-                Profile::Windows => ChaserProfile::windows()
-                    .chrome_version(chrome_ver)
-                    .memory_gb(memory_gb)
-                    .build(),
-                Profile::Macos => ChaserProfile::macos_arm()
-                    .chrome_version(chrome_ver)
-                    .memory_gb(memory_gb)
-                    .build(),
-                Profile::Linux => ChaserProfile::linux()
-                    .chrome_version(chrome_ver)
-                    .memory_gb(memory_gb)
-                    .build(),
-            };
-            chaser
-                .apply_profile(&fingerprint)
-                .await
-                .map_err(|e| ChaserError::PageFailed(format!("apply_profile: {e}")))?;
-            page.evaluate_on_new_document(LINUX_SCREEN_PATCH)
-                .await
-                .map_err(|e| ChaserError::PageFailed(format!("screen_patch: {e}")))?;
+                .map_err(|e| ChaserError::PageFailed(format!("perms_patch: {e}")))?;
         }
 
         if url != "about:blank" {
@@ -329,6 +333,29 @@ const LINUX_SCREEN_PATCH: &str = r#"(function () {
     try {
         Object.defineProperty(Notification, 'permission', { get: () => 'default', configurable: true });
     } catch (_) {}
+})();"#;
+
+/// `navigator.permissions.query` patch for Linux (both headless and Xvfb modes).
+///
+/// Without this, `permissions.query({ name: 'notifications' })` returns `'denied'`
+/// while `Notification.permission` is `'default'` — a detectable inconsistency
+/// that puppeteer-extra-plugin-stealth also patches (navigator.permissions module).
+#[cfg(target_os = "linux")]
+const LINUX_PERMS_PATCH: &str = r#"(function () {
+    if (!window.navigator.permissions) return;
+    const _origQuery = window.navigator.permissions.query.bind(window.navigator.permissions);
+    Object.defineProperty(window.navigator.permissions.__proto__, 'query', {
+        value: function query(parameters) {
+            if (parameters && parameters.name === 'notifications') {
+                let state;
+                try { state = Notification.permission; } catch (_) { state = 'default'; }
+                return Promise.resolve({ state: state || 'default', onchange: null });
+            }
+            return _origQuery(parameters);
+        },
+        configurable: true,
+        writable: true,
+    });
 })();"#;
 
 /// Find the lowest unused X display number by checking /tmp/.X{n}-lock.
