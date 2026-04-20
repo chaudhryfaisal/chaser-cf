@@ -6,7 +6,9 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter("chaser_cf=debug,chaser_oxide=info")
         .init();
 
-    let config = ChaserConfig::default().with_headless(true);
+    let config = ChaserConfig::default()
+        .with_headless(true)
+        .with_extra_args(vec!["--no-sandbox".to_string()]);
     let chaser = ChaserCF::new(config).await?;
 
     let proxy = Some(ProxyConfig::new("proxy.chaser.sh".to_string(), 10002)
