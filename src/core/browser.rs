@@ -276,58 +276,6 @@ impl BrowserManager {
     }
 }
 
-/// Extra `addScriptToEvaluateOnNewDocument` patch for Linux headless.
-///
-/// Patches the remaining signals that differ between Linux headless and a real
-/// Windows desktop. `--window-size=1920,1080` handles innerWidth/outerWidth at
-/// the Chrome level; this script handles screen object and Notification.
-/// Injected into every frame (including the Cloudflare Turnstile iframe).
-#[cfg(target_os = "linux")]
-const LINUX_SCREEN_PATCH: &str = r#"(function () {
-    // Screen — Linux headless reports 800×600 even with --window-size=1920,1080.
-    // A real 1920×1080 desktop: availHeight = height - taskbar (~40px).
-    const W = 1920, H = 1080;
-    const sd = (v) => ({ get: () => v, configurable: true });
-    Object.defineProperties(screen, {
-        width:       sd(W),
-        height:      sd(H),
-        availWidth:  sd(W),
-        availHeight: sd(H - 40),
-        availTop:    sd(0),
-        availLeft:   sd(0),
-        colorDepth:  sd(24),
-        pixelDepth:  sd(24),
-    });
-
-    // Notification.permission — headless defaults to "denied"; real first-visit is "default".
-    try {
-        Object.defineProperty(Notification, 'permission', { get: () => 'default', configurable: true });
-    } catch (_) {}
-})();"#;
-
-/// `navigator.permissions.query` patch for Linux (both headless and Xvfb modes).
-///
-/// Without this, `permissions.query({ name: 'notifications' })` returns `'denied'`
-/// while `Notification.permission` is `'default'` — a detectable inconsistency
-/// that puppeteer-extra-plugin-stealth also patches (navigator.permissions module).
-#[cfg(target_os = "linux")]
-const LINUX_PERMS_PATCH: &str = r#"(function () {
-    if (!window.navigator.permissions) return;
-    const _origQuery = window.navigator.permissions.query.bind(window.navigator.permissions);
-    Object.defineProperty(window.navigator.permissions.__proto__, 'query', {
-        value: function query(parameters) {
-            if (parameters && parameters.name === 'notifications') {
-                let state;
-                try { state = Notification.permission; } catch (_) { state = 'default'; }
-                return Promise.resolve({ state: state || 'default', onchange: null });
-            }
-            return _origQuery(parameters);
-        },
-        configurable: true,
-        writable: true,
-    });
-})();"#;
-
 /// Find the lowest unused X display number by checking /tmp/.X{n}-lock.
 #[cfg(target_os = "linux")]
 fn find_free_display() -> u32 {
