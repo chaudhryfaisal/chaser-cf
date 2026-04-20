@@ -248,19 +248,13 @@ impl BrowserManager {
                 .await
                 .map_err(|e| ChaserError::PageFailed(format!("apply_native_profile: {e}")))?;
 
-            // Headless-only screen patch: --window-size sets innerWidth/outerWidth but
-            // screen.* still reports 800×600 without this.
-            if self.xvfb.is_none() {
-                page.evaluate_on_new_document(LINUX_SCREEN_PATCH)
-                    .await
-                    .map_err(|e| ChaserError::PageFailed(format!("screen_patch: {e}")))?;
-            }
-
-            // Applied in both modes: fix navigator.permissions.query so it returns
-            // the same state as Notification.permission.
-            page.evaluate_on_new_document(LINUX_PERMS_PATCH)
-                .await
-                .map_err(|e| ChaserError::PageFailed(format!("perms_patch: {e}")))?;
+            // NOTE: LINUX_SCREEN_PATCH and LINUX_PERMS_PATCH are intentionally NOT
+            // applied here. Both patches replace native browser APIs with JS functions,
+            // making `screen.width.toString()` and `navigator.permissions.query.toString()`
+            // return non-native code strings — a reliable bot signal that CF's managed
+            // challenge JS checks. cf-clearance-scraper does not patch these APIs and
+            // passes the same challenge. The 800×600 screen and 'denied' notification
+            // permission are acceptable — CF does not gate on these values.
         }
 
         if url != "about:blank" {
