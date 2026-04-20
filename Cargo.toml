@@ -1,6 +1,6 @@
 [package]
 name = "chaser-cf"
-version = "0.1.9"
+version = "0.2.0"
 edition = "2021"
 description = "High-performance Cloudflare bypass library with stealth browser automation. Rust-native with C FFI bindings."
 license = "MIT OR Apache-2.0"
@@ -54,7 +54,7 @@ base64 = "0.22"
 axum = { version = "0.7", optional = true }
 tower = { version = "0.4", optional = true }
 tower-http = { version = "0.5", features = ["cors", "trace", "timeout"], optional = true }
-chaser-oxide = { path = "../chaser-oxide", default-features = false, features = ["native-tls", "zip0"] }
+chaser-oxide = { version = "0.2.4", default-features = false, features = ["native-tls", "zip0"] }
 
 [build-dependencies]
 cbindgen = "0.26"

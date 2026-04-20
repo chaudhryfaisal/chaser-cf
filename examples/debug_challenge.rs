@@ -11,8 +11,12 @@ async fn main() -> anyhow::Result<()> {
         .with_extra_args(vec!["--no-sandbox".to_string()]);
     let chaser = ChaserCF::new(config).await?;
 
-    let proxy = Some(ProxyConfig::new("proxy.chaser.sh".to_string(), 10002)
-        .with_auth("us_t9cpj3-session-debugXXX".to_string(), "IUP9Iny3HPmKYHFF".to_string()));
+    let proxy = Some(
+        ProxyConfig::new("proxy.chaser.sh".to_string(), 10002).with_auth(
+            "us_t9cpj3-session-debugXXX".to_string(),
+            "IUP9Iny3HPmKYHFF".to_string(),
+        ),
+    );
 
     let url = "https://2captcha.com/demo/cloudflare-turnstile-challenge";
 

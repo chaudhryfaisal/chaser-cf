@@ -313,8 +313,8 @@ async fn try_click_challenge(chaser: &chaser_oxide::ChaserPage) {
         let t = i as f64 / steps as f64;
         let u = 1.0 - t;
         // Cubic Bezier: B(t) = u³P0 + 3u²tP1 + 3ut²P2 + t³P3
-        let bx = u*u*u*p0x + 3.0*u*u*t*p1x + 3.0*u*t*t*p2x + t*t*t*tx;
-        let by = u*u*u*p0y + 3.0*u*u*t*p1y + 3.0*u*t*t*p2y + t*t*t*ty;
+        let bx = u * u * u * p0x + 3.0 * u * u * t * p1x + 3.0 * u * t * t * p2x + t * t * t * tx;
+        let by = u * u * u * p0y + 3.0 * u * u * t * p1y + 3.0 * u * t * t * p2y + t * t * t * ty;
         let _ = page
             .move_mouse(chaser_oxide::layout::Point::new(bx, by))
             .await;

@@ -20,6 +20,7 @@ Cloudflare bypass library powered by stealth browser automation. No captcha API 
 - **Turnstile min** — solves Turnstile with request interception, much faster (site key required)
 - **Page source** — returns HTML after challenge is cleared
 - **Proxy support** — per-request proxy with optional auth
+- **Virtual display** — Xvfb-backed headed Chrome on Linux servers (required for CF managed challenges)
 - **C FFI** — use from Python, Go, Node.js, C/C++, etc.
 - **HTTP server** — optional REST API (feature-flagged)
 
@@ -27,7 +28,7 @@ Cloudflare bypass library powered by stealth browser automation. No captcha API 
 
 ```toml
 [dependencies]
-chaser-cf = { version = "0.1.9" }
+chaser-cf = { version = "0.2.0" }
 ```
 
 Requires Chrome or Chromium installed on the system.
@@ -84,8 +85,10 @@ let config = ChaserConfig::default()
     .with_context_limit(10)       // max concurrent browser contexts
     .with_timeout_ms(60_000)      // per-operation timeout
     .with_lazy_init(true)         // don't launch browser until first use
-    .with_headless(true)          // headless mode
-    .with_chrome_path("/usr/bin/chromium");
+    .with_headless(true)          // headless mode (see note below)
+    .with_virtual_display(true)   // Linux: start Xvfb, run Chrome headed inside it
+    .with_chrome_path("/usr/bin/chromium")
+    .add_extra_arg("--no-sandbox");  // required when running as root
 ```
 
 | Option | Default | Description |
@@ -94,7 +97,31 @@ let config = ChaserConfig::default()
 | `timeout_ms` | 60000 | Per-operation timeout (ms) |
 | `lazy_init` | false | Defer browser launch until first use |
 | `headless` | false | Run browser headless |
+| `virtual_display` | false | Linux: use Xvfb virtual display (overrides `headless`) |
+| `extra_args` | `[]` | Extra Chrome flags (e.g. `--no-sandbox`, `--disable-gpu`) |
 | `chrome_path` | auto | Path to Chrome/Chromium binary |
+
+### Linux server deployment
+
+Cloudflare's managed/interactive challenge detects headless Chrome at the binary level. On Linux servers, use `--virtual-display` to run Chrome headed inside an Xvfb virtual framebuffer — this is the same approach used by cf-clearance-scraper and other public bypass tools.
+
+```bash
+apt install xvfb
+```
+
+```rust
+let config = ChaserConfig::default()
+    .with_virtual_display(true)
+    .add_extra_arg("--no-sandbox");  // if running as root
+```
+
+Or via environment variables:
+
+```bash
+CHASER_VIRTUAL_DISPLAY=true CHASER_EXTRA_ARGS="--no-sandbox" cargo run ...
+```
+
+Headless mode (`with_headless(true)`) works for Turnstile-only flows (min/max) but will fail CF WAF/managed challenges — use `virtual_display` for those.
 
 ### Testing
 
@@ -103,6 +130,8 @@ cargo run --example test_turnstile -- <url> [options]
 
 Options:
   --headless                   Run headless
+  --virtual-display            Start Xvfb, run Chrome headed (Linux, requires xvfb)
+  --no-sandbox                 Run Chrome without sandbox (required when running as root)
   --proxy <host:port>          Proxy address
   --proxy-auth <user:pass>     Proxy credentials
   --site-key <key>             Turnstile site key (enables min mode)
@@ -111,7 +140,8 @@ Options:
 
 # Examples
 cargo run --example test_turnstile -- https://stake.com
-cargo run --example test_turnstile -- https://stake.com --headless --mode waf
+cargo run --example test_turnstile -- https://stake.com --virtual-display --mode waf
+cargo run --example test_turnstile -- https://stake.com --virtual-display --no-sandbox --mode waf
 cargo run --example test_turnstile -- https://example.com --site-key 0x4AA... --mode min
 cargo run --example test_turnstile -- https://stake.com --proxy 1.2.3.4:8080 --proxy-auth user:pass
 ```
@@ -158,6 +188,8 @@ curl -X POST http://localhost:3000/solve \
 | `CHASER_TIMEOUT` | `60000` | Timeout (ms) |
 | `CHASER_LAZY_INIT` | `false` | Lazy browser init |
 | `CHASER_HEADLESS` | `false` | Headless mode |
+| `CHASER_VIRTUAL_DISPLAY` | `false` | Xvfb virtual display (Linux) |
+| `CHASER_EXTRA_ARGS` | none | Whitespace-separated Chrome flags (e.g. `--no-sandbox --disable-gpu`) |
 | `CHROME_BIN` | auto | Chrome binary path |
 | `AUTH_TOKEN` | none | Optional API auth token |
 

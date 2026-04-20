@@ -1,4 +1,4 @@
-use chaser_cf::{ChaserConfig, core::BrowserManager};
+use chaser_cf::{core::BrowserManager, ChaserConfig};
 use std::env;
 
 const FP_SCRIPT: &str = r#"JSON.stringify({
@@ -70,12 +70,14 @@ async fn main() -> anyhow::Result<()> {
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--headless"        => headless = true,
-            "--no-sandbox"      => no_sandbox = true,
+            "--headless" => headless = true,
+            "--no-sandbox" => no_sandbox = true,
             "--virtual-display" => virtual_display = true,
             other => {
                 eprintln!("Unknown: {other}");
-                eprintln!("Usage: debug_fingerprint [--headless] [--no-sandbox] [--virtual-display]");
+                eprintln!(
+                    "Usage: debug_fingerprint [--headless] [--no-sandbox] [--virtual-display]"
+                );
                 return Ok(());
             }
         }
@@ -92,13 +94,18 @@ async fn main() -> anyhow::Result<()> {
     let mgr = BrowserManager::new(&config).await?;
     // Navigate to a real URL so addScriptToEvaluateOnNewDocument fires.
     // We use a neutral data: URL to avoid any external influence.
-    let (page, _chaser) = mgr.new_page(None, "data:text/html,<html><body>fp</body></html>").await?;
+    let (page, _chaser) = mgr
+        .new_page(None, "data:text/html,<html><body>fp</body></html>")
+        .await?;
 
     // Basic fingerprint
     let fp: Option<serde_json::Value> = page.evaluate(FP_SCRIPT).await?.into_value()?;
     if let Some(json_str) = fp {
         let parsed: serde_json::Value = serde_json::from_str(json_str.as_str().unwrap_or("{}"))?;
-        println!("=== Fingerprint ===\n{}", serde_json::to_string_pretty(&parsed)?);
+        println!(
+            "=== Fingerprint ===\n{}",
+            serde_json::to_string_pretty(&parsed)?
+        );
     }
 
     // High-entropy UA hints (returns a Promise, Page::evaluate resolves it)
@@ -106,7 +113,10 @@ async fn main() -> anyhow::Result<()> {
     if let Some(v) = he {
         let s = v.as_str().unwrap_or("{}");
         match serde_json::from_str::<serde_json::Value>(s) {
-            Ok(parsed) => println!("\n=== UA High Entropy ===\n{}", serde_json::to_string_pretty(&parsed)?),
+            Ok(parsed) => println!(
+                "\n=== UA High Entropy ===\n{}",
+                serde_json::to_string_pretty(&parsed)?
+            ),
             Err(_) => println!("\n=== UA High Entropy ===\n{s}"),
         }
     }

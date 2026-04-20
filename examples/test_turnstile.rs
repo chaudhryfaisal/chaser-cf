@@ -1,4 +1,4 @@
-use chaser_cf::{ChaserCF, ChaserConfig, ProxyConfig, models::Profile};
+use chaser_cf::{models::Profile, ChaserCF, ChaserConfig, ProxyConfig};
 use std::env;
 
 fn usage() {
