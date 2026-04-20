@@ -54,7 +54,7 @@ base64 = "0.22"
 axum = { version = "0.7", optional = true }
 tower = { version = "0.4", optional = true }
 tower-http = { version = "0.5", features = ["cors", "trace", "timeout"], optional = true }
-chaser-oxide = { version = "0.2.3", default-features = false, features = ["native-tls", "zip0"] }
+chaser-oxide = { path = "../chaser-oxide", default-features = false, features = ["native-tls", "zip0"] }
 
 [build-dependencies]
 cbindgen = "0.26"
