@@ -2,7 +2,7 @@
 # Multi-stage build for minimal image size
 
 # Stage 1: Build
-FROM rust:1.96.0-slim-bookworm AS builder
+FROM rust:1.96.0-slim-bullseye AS builder
 
 WORKDIR /app
 
